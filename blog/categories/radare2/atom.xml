@@ -4,7 +4,7 @@
   <title><![CDATA[Category: Radare2 | crowell's blog]]></title>
   <link href="http://crowell.github.io/blog/categories/radare2/atom.xml" rel="self"/>
   <link href="http://crowell.github.io/"/>
-  <updated>2014-11-23T22:50:05-05:00</updated>
+  <updated>2014-11-23T22:52:30-05:00</updated>
   <id>http://crowell.github.io/</id>
   <author>
     <name><![CDATA[Jeffrey Crowell]]></name>
@@ -12,6 +12,573 @@
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[At Gunpoint Hacklu 2014 With Radare2]]></title>
+    <link href="http://crowell.github.io/blog/2014/11/23/at-gunpoint-hacklu-2014-with-radare2/"/>
+    <updated>2014-11-23T22:51:42-05:00</updated>
+    <id>http://crowell.github.io/blog/2014/11/23/at-gunpoint-hacklu-2014-with-radare2</id>
+    <content type="html"><![CDATA[<p>&ldquo;At Gunpoint&rdquo; was a 200 point Reversing challenge in Hack.lu ctf 2014. The
+description is as follows</p>
+
+<pre><code>You 're the sheriff of a small town, investigating news about a gangster squad
+passing by. Rumor has it they' re easy to outsmart, so you have just followed
+one to their encampment by the river.You know you can easily take them out one
+by one, if you would just know their secret handshake..
+</code></pre>
+
+<p>Let&rsquo;s see what we are working with.</p>
+
+<pre><code>minishwoods hacklu/gunpoint » file gunpoint_2daf5fe3fb236b398ff9e5705a058a7f.dat
+gunpoint_2daf5fe3fb236b398ff9e5705a058a7f.dat: Gameboy ROM: "FLUX", [ROM ONLY], ROM: 256Kbit
+</code></pre>
+
+<p>So it is a Gameboy ROM. I load it up in VisualBoyAdvance and see what the game is.</p>
+
+<p><img src="http://i.imgur.com/pVD3Je8.png" alt="running_game_1.png" /></p>
+
+<p>It is a static image, and after some time, we receive this text.</p>
+
+<p><img src="http://i.imgur.com/K7hPMTJ.png" alt="running_game_2.png" /></p>
+
+<p>Looks like we will have to put in some inputs from the joypad to get the flag.
+It is a crackme style but for the Gameboy! Sounds fun.</p>
+
+<p>First thing to do is to find out how the Gameboy interprets button presses.</p>
+
+<p>According to this document here <a href="http://www.semis.demon.co.uk/Gameboy/Gbspec.txt">http://www.semis.demon.co.uk/Gameboy/Gbspec.txt</a>
+The joypad is memory mapped to <code>0xFF00</code>. So now that we have some sort of idea
+of what we are looking for, let&rsquo;s load up the ROM in radare2!</p>
+
+<p>First, let&rsquo;s run the auto analysis and see what r2 can give us for functions.
+We run <code>aa</code> to analyze the binary, then <code>afl</code> to list the functions.</p>
+
+<pre><code>minishwoods hacklu/gunpoint » radare2 ./gunpoint_2daf5fe3fb236b398ff9e5705a058a7f.dat
+ -- Fuck you, fuck you in the mouth, with a chair!
+ [0x00000100]&gt; aa
+ [0x00000100]&gt; afl
+ 0x00000100  35  1  entry0
+ 0x00000150  133  8  main
+ 0x00000123  178  8  fcn.00000123
+</code></pre>
+
+<p>Hm&hellip; not so great, just 3 functions. (note, since after the ctf ended, the latest git of r2 is much better at detecting Gameboy functions!)</p>
+
+<p>Let&rsquo;s try to find usage of the joypad. Really what we are looking for is a load
+or store from <code>0xFF00</code>, but I am lazy, and the ROM is small, so we can just
+disassembly everything and grep for it!</p>
+
+<pre><code class="asm">[0x00000100]&gt; s 0; pd 10000 | grep ff00
+Do you want to print 566.8K chars? (y/N)
+|           0x00000193    e2           ld [0xff00 + c], a
+            0x00000c84    f000         ld a, [0xff00]
+|           0x00001e63    e000         ld [0xff00], a
+|           0x00001e65    f000         ld a, [0xff00]
+|           0x00001e67    f000         ld a, [0xff00]
+|           0x00001e71    e000         ld [0xff00], a
+|           0x00001e73    f000         ld a, [0xff00]
+|           0x00001e75    f000         ld a, [0xff00]
+|           0x00001e77    f000         ld a, [0xff00]
+|           0x00001e79    f000         ld a, [0xff00]
+|           0x00001e7b    f000         ld a, [0xff00]
+|           0x00001e7d    f000         ld a, [0xff00]
+|           0x00001e88    e000         ld [0xff00], a
+            0x00002307    e2           ld [0xff00 + c], a
+            0x00002317    f2           ld a, [0xff00 + c]
+            0x0000233f    f2           ld a, [0xff00 + c]
+            0x00002342    f2           ld a, [0xff00 + c]
+            0x00002717    f2           ld a, [0xff00 + c]
+</code></pre>
+
+<p>Perfect, not many uses, and it looks like there are a few small groups that are
+touching <code>0xFF00</code>, so probably just a few functions that interact with the
+joypad.</p>
+
+<p>So, seek to 0x1e63 (<code>s 0x1e63</code>), then open up visual mode with <code>V</code>. Scroll up
+a bit to see that at <code>0x1e5f</code> is a <code>ret</code>, then <code>0x1e60</code> is <code>push bc</code>. The push
+instruction looks to be the start of a function that interacts with the joypad
+quite a bit. So we can define this as a function from visual mode with <code>df</code>.
+(If you have a newer version of r2, this is probably already done for you).</p>
+
+<p>Checking back at the Gameboy document, The function looks very similar, in fact,
+it nearly identical to the joypad reader from Ms. PacMan.</p>
+
+<p>Code from Ms. PacMan is here</p>
+
+<pre><code class="asm">       Example code:
+
+          Game: Ms. Pacman
+          Address: $3b1
+
+        LD A,$20       &lt;- bit 5 = $20
+        LD ($FF00),A   &lt;- select P14 by setting it low
+        LD A,($FF00)
+        LD A,($FF00)   &lt;- wait a few cycles
+        CPL            &lt;- complement A
+        AND $0F        &lt;- get only first 4 bits
+        SWAP A         &lt;- swap it
+        LD B,A         &lt;- store A in B
+        LD A,$10
+        LD ($FF00),A   &lt;- select P15 by setting it low
+        LD A,($FF00)
+        LD A,($FF00)
+        LD A,($FF00)
+        LD A,($FF00)
+        LD A,($FF00)
+        LD A,($FF00)   &lt;- Wait a few MORE cycles
+        CPL            &lt;- complement (invert)
+        AND $0F        &lt;- get first 4 bits
+        OR B           &lt;- put A and B together
+
+        LD B,A         &lt;- store A in D
+        LD A,($FF8B)   &lt;- read old joy data from ram
+        XOR B          &lt;- toggle w/current button bit
+        AND B          &lt;- get current button bit back
+        LD ($FF8C),A   &lt;- save in new Joydata storage
+        LD A,B         &lt;- put original value in A
+        LD ($FF8B),A   &lt;- store it as old joy data
+
+
+        LD A,$30       &lt;- deselect P14 and P15
+        LD ($FF00),A   &lt;- RESET Joypad
+        RET            &lt;- Return from Subroutine
+
+          The button values using the above method are such:
+          $80 - Start             $8 - Down
+          $40 - Select            $4 - Up
+          $20 - B                 $2 - Left
+          $10 - A                 $1 - Right
+
+          Let's say we held down A, Start, and Up.
+          The value returned in accumulator A would be $94jkj
+</code></pre>
+
+<p>And the code we have here.</p>
+
+<pre><code class="asm">/ (fcn) fcn.00001e60 45
+|          0x00001e60    c5           push bc
+|          0x00001e61    3e20         ld a, 0x20
+|          ;  JOYPAD
+|          0x00001e63    e000         ld [0xff00], a
+|          ;  JOYPAD
+|          0x00001e65    f000         ld a, [0xff00]
+|          ;  JOYPAD
+|          0x00001e67    f000         ld a, [0xff00]
+|          0x00001e69    2f           cpl
+|          0x00001e6a    e60f         and 0x0f
+|          0x00001e6c    cb37         swap a
+|          0x00001e6e    47           ld b, a
+|          0x00001e6f    3e10         ld a, 0x10
+|          ;  JOYPAD
+|          0x00001e71    e000         ld [0xff00], a
+|          ;  JOYPAD
+|          0x00001e73    f000         ld a, [0xff00]
+|          ;  JOYPAD
+|          0x00001e75    f000         ld a, [0xff00]
+|          ;  JOYPAD
+|          0x00001e77    f000         ld a, [0xff00]
+|          ;  JOYPAD
+|          0x00001e79    f000         ld a, [0xff00]
+|          ;  JOYPAD
+|          0x00001e7b    f000         ld a, [0xff00]
+|          ;  JOYPAD
+|          0x00001e7d    f000         ld a, [0xff00]
+|          0x00001e7f    2f           cpl
+|          0x00001e80    e60f         and 0x0f
+|          0x00001e82    b0           or b
+|          0x00001e83    cb37         swap a
+|          0x00001e85    47           ld b, a
+|          0x00001e86    3e30         ld a, 0x30
+|          ;  JOYPAD
+|          0x00001e88    e000         ld [0xff00], a
+|          0x00001e8a    78           ld a, b
+|          0x00001e8b    c1           pop bc
+\          0x00001e8c    c9           ret
+</code></pre>
+
+<p>Looks really similar, doesn&rsquo;t it? ;) So we can see here, that value of the
+joypad is now stored in register A from <code>0x1e8a</code>. Seek to the beginning of the
+function and define the function with a name like <code>read_joypad</code> with <code>dr</code> in
+visual mode.</p>
+
+<p>So, now that we know what reads the joypad, we can find the xrefs to find out
+the checking routine. From visual mode, at the top of <code>read_joypad</code>, hit <code>x</code> to
+see the xrefs.</p>
+
+<pre><code>[GOTO XREF]&gt; 65 ./gunpoint_2daf5fe3fb236b398ff9e5705a058a7f.dat]&gt; pd $r @ read_joypad
+[0] 0x00001e60 CODE (CALL) XREF 0x00001e54 (fcn.00001e50)
+[1] 0x00001e60 CODE (CALL) XREF 0x00001e8d (fcn.00001e8d)
+[2] 0x00001e60 CODE (CALL) XREF 0x00001e94 (fcn.00001e94)
+</code></pre>
+
+<p>We see 3 cross references, which means we have 3 other functions calling the
+<code>read_joypad</code> function.</p>
+
+<p>Looking at xref2, we see that the joypad is read, and then the value is also
+stored into register <code>e</code></p>
+
+<pre><code class="asm">/ (fcn) load_joypad_to_e 5
+|          0x00001e94    cd601e       call read_joypad ;[1]
+|             read_joypad(0x0, 0x0, 0x0)
+|          0x00001e97    5f           ld e, a
+\          0x00001e98    c9           ret
+</code></pre>
+
+<p>Essentially, in pseudocode</p>
+
+<pre><code class="c">a = read_joypad();
+e = a;
+</code></pre>
+
+<p>For some time I was stuck here, as it didn&rsquo;t seem that the <code>load_joypad_to_e</code>
+was called anywhere, r2 did not find any calls, but we can use the same trick
+we used to find the references to the memory mapped io of the joypad to find
+references to the <code>load_joypad_to_e</code>.</p>
+
+<pre><code>[0x00001e94]&gt; s 0; pd 10000 | grep load_joypad
+Do you want to print 566.8K chars? (y/N)
+  --------&gt; 0x00000d6f    cd941e       call load_joypad_to_e
+          &gt;    load_joypad_to_e()
+  / (fcn) load_joypad_to_e 5
+</code></pre>
+
+<p>Looks like it is referenced just once, so seek to <code>0xd6f</code> and open visual mode.
+Looks to be the beginning of a big block of code, define as a function and start
+reversing. I defined it as <code>checker_loop</code> once I realized that this is the main
+crackme part.</p>
+
+<p>It looks like the auto analysis fails to detect the proper end of the function.
+This is fine, because we can tell r2 exactly how long the function is ourselves.</p>
+
+<p>Looking at the code, the last instruction of the function is the <code>ret</code> at
+<code>0xf01</code>, so, by starting at <code>0xd6f</code> the function should be 403 bytes. Just
+define the function like this</p>
+
+<p><code>[0x00000e5f]&gt; af+ 0xd6f 403 checker_loop</code></p>
+
+<p>Now we can disassemble the entire function with <code>pdf @ checker_loop</code>.</p>
+
+<pre><code class="asm">/ (fcn) checker_loop 403
+|           0x00000d6f    cd941e       call load_joypad_to_e
+|              load_joypad_to_e()
+|           0x00000d72    21a2c0       ld hl, 0xc0a2
+|           0x00000d75    73           ld [hl], e
+|           0x00000d76    21a1c0       ld hl, 0xc0a1
+|           0x00000d79    7e           ld a, [hl]
+|           0x00000d7a    21a2c0       ld hl, 0xc0a2
+|           0x00000d7d    be           cp [hl]
+|       ,=&lt; 0x00000d7e    2003         jr nZ, 0x03
+|      ,==&lt; 0x00000d80    c3f60e       jp loc.00000ef6
+|      |`-&gt; 0x00000d83    21a0c0       ld hl, 0xc0a0
+|      |    0x00000d86    7e           ld a, [hl]
+|      |    0x00000d87    fe0d         cp 0x0d
+|     ,===&lt; 0x00000d89    c2990d       jp nZ, 0x0d99
+|    ,====&lt; 0x00000d8c    1803         jr 0x03 ; (checker_loop)
+|   ,=====&lt; 0x00000d8e    c3990d       jp 0x0d99 ; (checker_loop)
+|   |`----&gt; 0x00000d91    21a0c0       ld hl, 0xc0a0
+|   | ||    0x00000d94    3600         ld [hl], 0x00
+|  ,======&lt; 0x00000d96    c38a0e       jp loc.00000e8a
+|  |`-`---&gt; 0x00000d99    21a2c0       ld hl, 0xc0a2
+|  |   |    0x00000d9c    7e           ld a, [hl]
+|  |   |    0x00000d9d    e604         and 0x04
+| ,=======&lt; 0x00000d9f    2003         jr nZ, 0x03
+| ========&lt; 0x00000da1    c3c90d       jp loc.00000dc9
+| `-------&gt; 0x00000da4    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000da7    7e           ld a, [hl]
+|  |   |    0x00000da8    b7           or a
+| ========&lt; 0x00000da9    caba0d       jp Z, 0x0dba
+|  |   |    0x00000dac    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000daf    7e           ld a, [hl]
+|  |   |    0x00000db0    fe04         cp 0x04
+| ========&lt; 0x00000db2    c2c10d       jp nZ, 0x0dc1
+| ========&lt; 0x00000db5    1803         jr 0x03 ; (checker_loop)
+| ========&lt; 0x00000db7    c3c10d       jp 0x0dc1 ; (checker_loop)
+| --------&gt; 0x00000dba    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000dbd    34           inc [hl]
+| ========&lt; 0x00000dbe    c38a0e       jp loc.00000e8a
+| --------&gt; 0x00000dc1    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000dc4    3600         ld [hl], 0x00
+| ========&lt; 0x00000dc6    c38a0e       jp loc.00000e8a
+|- loc.00000dc9 49
+| --------&gt; 0x00000dc9    21a2c0       ld hl, 0xc0a2
+|  |   |    0x00000dcc    7e           ld a, [hl]
+|  |   |    0x00000dcd    e601         and 0x01
+| ========&lt; 0x00000dcf    2003         jr nZ, 0x03
+| ========&lt; 0x00000dd1    c3fa0d       jp loc.00000dfa
+| --------&gt; 0x00000dd4    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000dd7    7e           ld a, [hl]
+|  |   |    0x00000dd8    fe01         cp 0x01
+| ========&lt; 0x00000dda    caeb0d       jp Z, 0x0deb
+|  |   |    0x00000ddd    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000de0    7e           ld a, [hl]
+|  |   |    0x00000de1    fe05         cp 0x05
+| ========&lt; 0x00000de3    c2f20d       jp nZ, 0x0df2
+| ========&lt; 0x00000de6    1803         jr 0x03 ; (loc.00000dc9)
+| ========&lt; 0x00000de8    c3f20d       jp 0x0df2 ; (loc.00000dc9)
+| --------&gt; 0x00000deb    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000dee    34           inc [hl]
+| ========&lt; 0x00000def    c38a0e       jp loc.00000e8a
+| --------&gt; 0x00000df2    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000df5    3600         ld [hl], 0x00
+\ ========&lt; 0x00000df7    c38a0e       jp loc.00000e8a
+|- loc.00000dfa 49
+| --------&gt; 0x00000dfa    21a2c0       ld hl, 0xc0a2
+|  |   |    0x00000dfd    7e           ld a, [hl]
+|  |   |    0x00000dfe    e608         and 0x08
+| ========&lt; 0x00000e00    2003         jr nZ, 0x03
+| ========&lt; 0x00000e02    c32b0e       jp loc.00000e2b
+| --------&gt; 0x00000e05    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000e08    7e           ld a, [hl]
+|  |   |    0x00000e09    fe02         cp 0x02
+| ========&lt; 0x00000e0b    ca1c0e       jp Z, 0x0e1c
+|  |   |    0x00000e0e    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000e11    7e           ld a, [hl]
+|  |   |    0x00000e12    fe06         cp 0x06
+| ========&lt; 0x00000e14    c2230e       jp nZ, 0x0e23
+| ========&lt; 0x00000e17    1803         jr 0x03 ; (loc.00000dfa)
+| ========&lt; 0x00000e19    c3230e       jp 0x0e23 ; (loc.00000dfa)
+| --------&gt; 0x00000e1c    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000e1f    34           inc [hl]
+| ========&lt; 0x00000e20    c38a0e       jp loc.00000e8a
+| --------&gt; 0x00000e23    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000e26    3600         ld [hl], 0x00
+\ ========&lt; 0x00000e28    c38a0e       jp loc.00000e8a
+|- loc.00000e2b 49
+| --------&gt; 0x00000e2b    21a2c0       ld hl, 0xc0a2
+|  |   |    0x00000e2e    7e           ld a, [hl]
+|  |   |    0x00000e2f    e602         and 0x02
+| ========&lt; 0x00000e31    2003         jr nZ, 0x03
+| ========&lt; 0x00000e33    c35c0e       jp loc.00000e5c
+| --------&gt; 0x00000e36    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000e39    7e           ld a, [hl]
+|  |   |    0x00000e3a    fe03         cp 0x03
+| ========&lt; 0x00000e3c    ca4d0e       jp Z, 0x0e4d
+|  |   |    0x00000e3f    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000e42    7e           ld a, [hl]
+|  |   |    0x00000e43    fe07         cp 0x07
+| ========&lt; 0x00000e45    c2540e       jp nZ, 0x0e54
+| ========&lt; 0x00000e48    1803         jr 0x03 ; (loc.00000e2b)
+| ========&lt; 0x00000e4a    c3540e       jp 0x0e54 ; (loc.00000e2b)
+| --------&gt; 0x00000e4d    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000e50    34           inc [hl]
+| ========&lt; 0x00000e51    c38a0e       jp loc.00000e8a
+| --------&gt; 0x00000e54    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000e57    3600         ld [hl], 0x00
+\ ========&lt; 0x00000e59    c38a0e       jp loc.00000e8a
+|- loc.00000e5c 95
+| --------&gt; 0x00000e5c    21a2c0       ld hl, 0xc0a2
+|  |   |    0x00000e5f    7e           ld a, [hl]
+|  |   |    0x00000e60    e610         and 0x10
+| ========&lt; 0x00000e62    2003         jr nZ, 0x03
+| ========&lt; 0x00000e64    c38a0e       jp loc.00000e8a
+| --------&gt; 0x00000e67    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000e6a    7e           ld a, [hl]
+|  |   |    0x00000e6b    fe0a         cp 0x0a
+| ========&lt; 0x00000e6d    ca7e0e       jp Z, 0x0e7e
+|  |   |    0x00000e70    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000e73    7e           ld a, [hl]
+|  |   |    0x00000e74    fe0b         cp 0x0b
+| ========&lt; 0x00000e76    c2850e       jp nZ, 0x0e85
+| ========&lt; 0x00000e79    1803         jr 0x03 ; (loc.00000e5c)
+| ========&lt; 0x00000e7b    c3850e       jp 0x0e85 ; (loc.00000e5c)
+| --------&gt; 0x00000e7e    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000e81    34           inc [hl]
+| ========&lt; 0x00000e82    c38a0e       jp loc.00000e8a
+| --------&gt; 0x00000e85    21a0c0       ld hl, 0xc0a0
+|  |   |    0x00000e88    3600         ld [hl], 0x00
+|  |        ; XREFS: JMP 0x00000dbe  JMP 0x00000dc6  JMP 0x00000def
+|  |        ; XREFS: JMP 0x00000df7  JMP 0x00000e20  JMP 0x00000e28
+|  |        ; XREFS: JMP 0x00000e51  JMP 0x00000e59  JMP 0x00000e82
+|  |        ; XREFS: JMP 0x00000e64
+|- loc.00000e8a 49
+| -`------&gt; 0x00000e8a    21a2c0       ld hl, 0xc0a2
+|      |    0x00000e8d    7e           ld a, [hl]
+|      |    0x00000e8e    e620         and 0x20
+| ========&lt; 0x00000e90    2003         jr nZ, 0x03
+| ========&lt; 0x00000e92    c3bb0e       jp loc.00000ebb
+| --------&gt; 0x00000e95    21a0c0       ld hl, 0xc0a0
+|      |    0x00000e98    7e           ld a, [hl]
+|      |    0x00000e99    fe08         cp 0x08
+| ========&lt; 0x00000e9b    caac0e       jp Z, 0x0eac
+|      |    0x00000e9e    21a0c0       ld hl, 0xc0a0
+|      |    0x00000ea1    7e           ld a, [hl]
+|      |    0x00000ea2    fe09         cp 0x09
+| ========&lt; 0x00000ea4    c2b30e       jp nZ, 0x0eb3
+| ========&lt; 0x00000ea7    1803         jr 0x03 ; (loc.00000e8a)
+| ========&lt; 0x00000ea9    c3b30e       jp 0x0eb3 ; (loc.00000e8a)
+| --------&gt; 0x00000eac    21a0c0       ld hl, 0xc0a0
+|      |    0x00000eaf    34           inc [hl]
+| ========&lt; 0x00000eb0    c3f60e       jp loc.00000ef6
+| --------&gt; 0x00000eb3    21a0c0       ld hl, 0xc0a0
+|      |    0x00000eb6    3600         ld [hl], 0x00
+\ ========&lt; 0x00000eb8    c3f60e       jp loc.00000ef6
+|- loc.00000ebb 43
+| --------&gt; 0x00000ebb    21a2c0       ld hl, 0xc0a2
+|      |    0x00000ebe    7e           ld a, [hl]
+|      |    0x00000ebf    e680         and 0x80
+| ========&lt; 0x00000ec1    2003         jr nZ, 0x03
+| ========&lt; 0x00000ec3    c3e60e       jp loc.00000ee6
+| --------&gt; 0x00000ec6    21a0c0       ld hl, 0xc0a0
+|      |    0x00000ec9    7e           ld a, [hl]
+|      |    0x00000eca    fe0c         cp 0x0c
+| ========&lt; 0x00000ecc    c2de0e       jp nZ, 0x0ede
+| ========&lt; 0x00000ecf    1803         jr 0x03 ; (loc.00000ebb)
+| ========&lt; 0x00000ed1    c3de0e       jp 0x0ede ; (loc.00000ebb)
+| --------&gt; 0x00000ed4    cd0002       call 0x0200
+|         &gt;    0x00000200() ; main+176
+|      |    0x00000ed7    21a0c0       ld hl, 0xc0a0
+|      |    0x00000eda    34           inc [hl]
+| ========&lt; 0x00000edb    c3f60e       jp loc.00000ef6
+| --------&gt; 0x00000ede    21a0c0       ld hl, 0xc0a0
+|      |    0x00000ee1    3600         ld [hl], 0x00
+\ ========&lt; 0x00000ee3    c3f60e       jp loc.00000ef6
+|- loc.00000ee6 27
+| --------&gt; 0x00000ee6    21a2c0       ld hl, 0xc0a2
+|      |    0x00000ee9    7e           ld a, [hl]
+|      |    0x00000eea    e640         and 0x40
+| ========&lt; 0x00000eec    2003         jr nZ, 0x03
+| ========&lt; 0x00000eee    c3f60e       jp loc.00000ef6
+| --------&gt; 0x00000ef1    21a0c0       ld hl, 0xc0a0
+|      |    0x00000ef4    3600         ld [hl], 0x00
+|- loc.00000ef6 11
+| -----`--&gt; 0x00000ef6    21a2c0       ld hl, 0xc0a2
+|           0x00000ef9    7e           ld a, [hl]
+|           0x00000efa    21a1c0       ld hl, 0xc0a1
+|           0x00000efd    77           ld [hl], a
+\           0x00000efe    c36f0d       jp checker_loop
+\           0x00000f01    c9           ret
+</code></pre>
+
+<p>Yikes! This is a long function. With r2 we have a lot of tools at our disposal
+though, and we can use the graph view to get a better high-level understanding
+of the code.</p>
+
+<p>We can load up a graph visualization with either <code>VV</code> for an ascii view, or a
+graphviz view with <code>ag</code>. I like to use the graphviz output with xdot.</p>
+
+<p><code>[0x00000d6f]&gt; ag $$ | xdot</code></p>
+
+<p>And we get a nice graph like this.  I have some annotations on mine, from
+reversing the function myself.
+This is helpful for looking at the overall way the function works. It seems to
+have a cascading check, like</p>
+
+<p><code>if(){}else if{}else if{}else{}</code></p>
+
+<p>type structure, which makes sense for value and index checking.</p>
+
+<p><img src="http://i.imgur.com/3qYEp5a.png" alt="biggraph.png" /></p>
+
+<p>So, after some analysis, and guessing, we can figure the following.
+There is some debouncing/not expected to be perfect for clock cycles for button
+presses, so there must be tolerance for <code>0xFF00</code> to be the same for multiple
+cycles, or to be 0 with no penalty.</p>
+
+<p>This means that the previous value must be stored somewhere, and that checks
+for empty press is somewhere too. From looking at the assembly, and the graph, I
+can piece together this as pseudocode.</p>
+
+<pre><code class="c">void main_checker() {
+  byte reg_E;
+  byte reg_A;
+  byte* curr_press = 0xc0a2;
+  byte* prev_press = 0xc0a1;
+  byte* num_correct = 0xc0a0;
+begin:
+  reg_E = load_joypad_to_e();
+  *curr_press = reg_E;
+  reg_A = *prev_press;
+  if (*curr_press == *prev_press) {
+    goto begin;
+  }
+  if (*curr_press == 0x00) {
+    goto begin;
+  }
+  do {
+    if (*curr_press == 0x01) {
+      if (*num_correct == 1 || *num_correct == 5) {
+        *num_correct++;
+      } else {
+        *num_correct = 0;
+      }
+    } else if (*curr_press == 0x02) {
+      if (*num_correct == 3 || num_correct == 7) {
+        *num_correct++;
+      } else {
+        *num_correct = 0;
+      }
+    } else if (*curr_press == 0x04) {
+      if (*num_correct == 0 || *num_correct == 4) {
+        *num_correct++;
+      } else {
+        *num_correct = 0;
+      }
+    } else if (*curr_press == 0x08) {
+      if (*num_correct == 2 || *num_correct == 6) {
+        *num_correct++;
+      } else {
+        *num_correct = 0;
+      }
+    } else if (*curr_press == 0x10) {
+      if (*num_correct == 10 || *num_correct == 11) {
+        *num_correct++;
+      } else {
+        *num_correct = 0;
+      }
+    } else if (*curr_press == 0x20) {
+      if (*num_correct == 8 || *num_correct == 9) {
+        *num_correct++;
+      } else {
+        *num_correct = 0;
+      }
+    } else if (*curr_press == 0x80) {
+      if (*num_correct == 12) {
+        *num_correct++;
+      } else {
+        *num_correct = 0;
+      }
+    } else {
+      *num_correct = 0;
+    }
+    *prev_press = *curr_press;
+  } while (*num_correct != 0x0D);
+  winner();
+}
+</code></pre>
+
+<p>The only thing left to do is to cross reference the button presses with their
+values, and extract the order from that code.</p>
+
+<pre><code>4 - up
+1 - right
+8 - down
+2 - left
+4 - up
+1 - right
+8 - down
+2 - left
+20 - B
+20 - B
+10 - A
+10 - A
+80 - Start
+---------values-----------------
+$80 - Start             $8 - Down
+$40 - Select            $4 - Up
+$20 - B                 $2 - Left
+$10 - A                 $1 - Right
+</code></pre>
+
+<p>Plug it in to VisualBoyAdvance and grab our 200 points!</p>
+
+<p><img src="http://i.imgur.com/5Zel4aQ.png" alt="win.png" /></p>
+
+<p>Thanks to FluxFingers for a great CTF!</p>
+
+<p>Comments? Questions?
+<code>crowell@shellphish.net</code></p>
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[Pwning With Radare2]]></title>
