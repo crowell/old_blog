@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
 
-  <title><![CDATA[Category: Pwning | crowell's blog]]></title>
+  <title><![CDATA[Category: pwning | crowell's blog]]></title>
   <link href="http://crowell.github.io/blog/categories/pwning/atom.xml" rel="self"/>
   <link href="http://crowell.github.io/"/>
-  <updated>2014-11-23T22:52:30-05:00</updated>
+  <updated>2014-11-23T22:59:07-05:00</updated>
   <id>http://crowell.github.io/</id>
   <author>
     <name><![CDATA[Jeffrey Crowell]]></name>
@@ -14,7 +14,7 @@
 
   
   <entry>
-    <title type="html"><![CDATA[Pwning With Radare2]]></title>
+    <title type="html"><![CDATA[pwning with radare2]]></title>
     <link href="http://crowell.github.io/blog/2014/11/23/pwning-with-radare2/"/>
     <updated>2014-11-23T22:42:33-05:00</updated>
     <id>http://crowell.github.io/blog/2014/11/23/pwning-with-radare2</id>
