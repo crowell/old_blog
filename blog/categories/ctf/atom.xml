@@ -4,7 +4,7 @@
   <title><![CDATA[Category: ctf | crowell's blog]]></title>
   <link href="http://crowell.github.io/blog/categories/ctf/atom.xml" rel="self"/>
   <link href="http://crowell.github.io/"/>
-  <updated>2014-11-23T23:03:26-05:00</updated>
+  <updated>2014-11-24T00:39:26-05:00</updated>
   <id>http://crowell.github.io/</id>
   <author>
     <name><![CDATA[Jeffrey Crowell]]></name>
@@ -12,6 +12,143 @@
   </author>
   <generator uri="http://octopress.org/">Octopress</generator>
 
+  
+  <entry>
+    <title type="html"><![CDATA[hosting a local kernel ctf challenge]]></title>
+    <link href="http://crowell.github.io/blog/2014/11/24/hosting-a-local-kernel-ctf-challenge/"/>
+    <updated>2014-11-24T00:38:42-05:00</updated>
+    <id>http://crowell.github.io/blog/2014/11/24/hosting-a-local-kernel-ctf-challenge</id>
+    <content type="html"><![CDATA[<h1>CTF exploitable kernel infrastructure</h1>
+
+<p>This year, I got the opportunity to write challenges for <a href="https://ctf.isis.poly.edu/">CSAW CTF</a> again. One of the challenges I wrote, &ldquo;krackme&rdquo;, was an exploitable loadable kernel module disguised as a simple crackme.</p>
+
+<p>While the challenge itself may not need a blog post, I hope the the infrastructure that I used to provide vms to the teams is helpful in creating similar challenges in the future.</p>
+
+<p>The problem with having kernel exploits in a ctf is that crashing a kernel can have some serious impact on the system, and allowing more than one team access to the instance is therefore not really a possibility.  With userspace programs, it is cheap to just serve up a new instance or a fork of a program on each connection, and userspace exploits have always been a big part of CTF. With kernel exploits, each team needs its own vm, and the ability to reboot their vm in the case of a crash. This has restricted kernel challenges to on-site CTF mostly, and <a href="https://github.com/mncoppola/Linux-Kernel-CTF">mncoppola</a> has made a great framework for on-site kernel exploit challenges. I wanted to design my challenge to be more similar to the userspace exploit challenges that we all know and lov, so my goals were.</p>
+
+<ul>
+<li>Spawn new VM on connect.</li>
+<li>Give each connection a &lsquo;fresh&rsquo; vm (eg. new copy of hard drive).</li>
+</ul>
+
+
+<p>Luckilly with <a href="http://wiki.qemu.org/Main_Page">qemu</a> and <a href="http://buildroot.uclibc.org/">buildroot</a> this is quite easy to do!</p>
+
+<h1>Building the VM</h1>
+
+<p>The first step to hosting a kernel exploit challenge is to build your vulnerable VM. I used buildroot to build my kernel with a minimal busybox userland, and a tiny 4.5mb ext2 disk. You can start by downloading the buildroot tools.</p>
+
+<pre><code class="sh">git clone git://git.buildroot.net/buildroot
+cd buildroot
+make xconfig
+</code></pre>
+
+<p>and you&rsquo;ll be dropped to the buildroot configurator.  If you&rsquo;ve ever built a kernel before, this type of configuration screen may seem familiar (except gui instead of curses). Important options are <code>Target</code> to select the architecture you wish to build, <code>Toolchain</code> To specify your kernel header version, <code>Kernel</code> to build a kernel (if you want a custom configuration, you can check out the kernel source and make your own custom config for that, or you could just use the defconfig from buildroot), and <code>Filesystem Images</code> to specify what to use as a root filesystem. I picked <code>ext2</code>.</p>
+
+<p><img src="http://i.imgur.com/ef4F9bh.png" alt="Imgur" /></p>
+
+<p>Hit save, and then
+<code>sh
+make
+</code>
+This may take a while as you download the toolchain, kernel source, and build everything. Check <code>output/images</code> for your kernel <code>bzImage</code> and <code>rootfs.ext2</code> filesystem. At this point you now have a minimal kernel with busybox that you can boot with qemu.This is great, but we need some more things, like the vulnerable module, and some way to launch it. By default, the username <code>root</code> has not password and you can login with that. Please remember to change the password!</p>
+
+<h1>Building the module.</h1>
+
+<p>If you&rsquo;re like me and don&rsquo;t build kernel modules all the time, you probably just steal the kernel module makefile from the first hit on Google for <code>Kernel module makefile</code>. This won&rsquo;t work to build against your custom kernel.</p>
+
+<p>I&rsquo;m going to assume you have your module source that works here, and just provide the makefile. If you need help writing the module, there are better guides than I can give here.
+With this makefile, replace the linux version (3.2.64) that I used, with whatever version you use, krackme.ko with whatever your kernel module is called, and the /path/to/buildroot/ with your actual path to buildroot.</p>
+
+<pre><code class="sh">obj-m += krackme.o
+all:
+    make -C /path/to/buildroot/output/build/linux-3.2.64 M=$(PWD) modules
+clean:
+    make -C /path/to/buildroot/output/build/linux-3.2.64 M=$(PWD) clean
+</code></pre>
+
+<p>So now you should have a .ko ready to be inserted to your new kernel.</p>
+
+<h1>Setting up the vm.</h1>
+
+<p>This magic qemu incantation will give you access to your vm with some networking.</p>
+
+<pre><code class="sh">/usr/bin/qemu-system-x86_64 -kernel bzImage -hda rootfs.ext2 -boot c -m 64M -append "root=/dev/sda rw ip=10.0.2.15:10.0.2.2:10.0.2.2 console=ttyAMA0 console=ttyS0" -serial stdio  -net nic,vlan=0 -net user,vlan=0 -monitor /dev/null -nographic
+</code></pre>
+
+<p>The first thing to do is to log in as <code>root</code> and do some setup. Change the password to something random, and get the vm to the state you want.</p>
+
+<p>Busybox&rsquo;s init scripts run <code>/etc/init.d/rcS</code>, so you can add additional instructions there. Mine looks like</p>
+
+<pre><code class="sh">#!/bin/sh
+
+
+# Start all init scripts in /etc/init.d
+# executing them in numerical order.
+#
+for i in /etc/init.d/S??* ;do
+
+     # Ignore dangling symlinks (if any).
+     [ ! -f "$i" ] &amp;&amp; continue
+
+     case "$i" in
+        *.sh)
+            # Source shell script for speed.
+            (
+                trap - INT QUIT TSTP
+                set start
+                . $i
+            )
+            ;;
+        *)
+            # No sh extension, so fork subprocess.
+            $i start
+            ;;
+    esac
+done
+
+/root/setup.sh
+</code></pre>
+
+<p>With <code>/root/setup.sh</code> looking like</p>
+
+<pre><code class="sh">#!/bin/sh
+.
+insmod /root/krackme.ko
+mknod /dev/krackme c 250 0
+chmod 666 /dev/krackme
+sysctl -w vm.mmap_min_addr="0"
+echo "nameserver 8.8.8.8" &gt; /etc/resolv.conf
+</code></pre>
+
+<p>The nameserver setup is important for networking, and make sure to actually insmod your kernel module. You can transfer the .ko by any means, wget, mount and copy, etc.</p>
+
+<p>Next add a new user, with a password you will provide to the attackers and exit.
+Now you should have a frozen good state vm. This launcher script can be used to give every launch a new copy of the vm from this snapshot. Thanks to <a href="http://acez.re">acez</a> for telling me about redirecting monitor to <code>/dev/null</code> to prevent players from dorpping to the qemu monitor.</p>
+
+<pre><code class="sh">#!/bin/bash
+MYFS=$(mktemp)
+cp rootfs.ext2 $MYFS
+/usr/bin/qemu-system-x86_64 -kernel bzImage -hda $MYFS -boot c -m 64M -append "root=/dev/sda rw ip=10.0.2.15:10.0.2.2:10.0.2.2 console=ttyAMA0 console=ttyS0" -serial stdio  -net nic,vlan=0 -net user,vlan=0 -monitor /dev/null -nographic
+rm $MYFS
+</code></pre>
+
+<p>So every launch from this script will now create a new copy of the hard disk, and boot from there. Users will not be able to interfere, and with the small amount of memory, the host vm should be able to host quite a few guests at once.</p>
+
+<h1>Launch on connect.</h1>
+
+<p>The last step is make the qemu vm launch when users connect to it. The simplest way is to add a new user to the host vm, and make the launch script the login shell. Give the players login access to the host vm with the provided username/password and the credentials to the user account on the guest vm.</p>
+
+<h1>Other notes.</h1>
+
+<p>See the PPP suggestions for running a ctf <a href="https://github.com/pwning/docs/blob/master/suggestions-for-running-a-ctf.markdown">here</a> for other tips for a local kernel challenge. While what I&rsquo;ve posted here will help you set up the infrastructure, it won&rsquo;t guarantee a good challenge, so following the advice there is an important step! Most importantly, be creative in your challenge, generic challenges are also boring to solve!</p>
+
+<p>Let me know if you have any questions!</p>
+
+<pre><code>crowell@shellphish.net
+</code></pre>
+]]></content>
+  </entry>
   
   <entry>
     <title type="html"><![CDATA[at gunpoint hacklu 2014 with radare2]]></title>

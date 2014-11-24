@@ -1,0 +1,396 @@
+
+<!DOCTYPE html>
+<!--[if IEMobile 7 ]><html class="no-js iem7"><![endif]-->
+<!--[if lt IE 9]><html class="no-js lte-ie8"><![endif]-->
+<!--[if (gt IE 8)|(gt IEMobile 7)|!(IEMobile)|!(IE)]><!--><html class="no-js" lang="en"><!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  <title>hosting a local kernel ctf challenge - crowell&#8217;s blog</title>
+  <meta name="author" content="Jeffrey Crowell">
+
+  
+  <meta name="description" content="CTF exploitable kernel infrastructure This year, I got the opportunity to write challenges for CSAW CTF again. One of the challenges I wrote, &ldquo; &hellip;">
+  
+
+  <!-- http://t.co/dKP3o1e -->
+  <meta name="HandheldFriendly" content="True">
+  <meta name="MobileOptimized" content="320">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  
+  <link rel="canonical" href="http://crowell.github.io/blog/2014/11/24/hosting-a-local-kernel-ctf-challenge/">
+  <link href="/favicon.png" rel="icon">
+  <link href="/stylesheets/screen.css" media="screen, projection" rel="stylesheet" type="text/css">
+  <script src="/javascripts/modernizr-2.0.js"></script>
+  <script src="/javascripts/ender.js"></script>
+  <script src="/javascripts/octopress.js" type="text/javascript"></script>
+  <link href="/atom.xml" rel="alternate" title="crowell's blog" type="application/atom+xml">
+  <!--Fonts from Google"s Web font directory at http://google.com/webfonts -->
+<link href="http://fonts.googleapis.com/css?family=PT+Serif:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+<link href="http://fonts.googleapis.com/css?family=PT+Sans:regular,italic,bold,bolditalic" rel="stylesheet" type="text/css">
+
+  
+
+</head>
+
+<body   >
+  <header role="banner"><hgroup>
+  <h1><a href="/">crowell&#8217;s blog</a></h1>
+  
+    <h2>ctf, hacking, and reversing</h2>
+  
+</hgroup>
+
+</header>
+  <nav role="navigation"><ul class="subscription" data-subscription="rss">
+  <li><a href="/atom.xml" rel="subscribe-rss" title="subscribe via RSS">RSS</a></li>
+  
+</ul>
+  
+<form action="https://www.google.com/search" method="get">
+  <fieldset role="search">
+    <input type="hidden" name="q" value="site:crowell.github.io" />
+    <input class="search" type="text" name="q" results="0" placeholder="Search"/>
+  </fieldset>
+</form>
+  
+<ul class="main-navigation">
+  <li><a href="/">Blog</a></li>
+  <li><a href="/blog/archives">Archives</a></li>
+</ul>
+
+</nav>
+  <div id="main">
+    <div id="content">
+      <div>
+<article class="hentry" role="article">
+  
+  <header>
+    
+      <h1 class="entry-title">Hosting a Local Kernel Ctf Challenge</h1>
+    
+    
+      <p class="meta">
+        
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-11-24T00:38:42-05:00" pubdate data-updated="true"></time>
+        
+      </p>
+    
+  </header>
+
+
+<div class="entry-content"><h1>CTF exploitable kernel infrastructure</h1>
+
+<p>This year, I got the opportunity to write challenges for <a href="https://ctf.isis.poly.edu/">CSAW CTF</a> again. One of the challenges I wrote, &ldquo;krackme&rdquo;, was an exploitable loadable kernel module disguised as a simple crackme.</p>
+
+<p>While the challenge itself may not need a blog post, I hope the the infrastructure that I used to provide vms to the teams is helpful in creating similar challenges in the future.</p>
+
+<p>The problem with having kernel exploits in a ctf is that crashing a kernel can have some serious impact on the system, and allowing more than one team access to the instance is therefore not really a possibility.  With userspace programs, it is cheap to just serve up a new instance or a fork of a program on each connection, and userspace exploits have always been a big part of CTF. With kernel exploits, each team needs its own vm, and the ability to reboot their vm in the case of a crash. This has restricted kernel challenges to on-site CTF mostly, and <a href="https://github.com/mncoppola/Linux-Kernel-CTF">mncoppola</a> has made a great framework for on-site kernel exploit challenges. I wanted to design my challenge to be more similar to the userspace exploit challenges that we all know and lov, so my goals were.</p>
+
+<ul>
+<li>Spawn new VM on connect.</li>
+<li>Give each connection a &lsquo;fresh&rsquo; vm (eg. new copy of hard drive).</li>
+</ul>
+
+
+<p>Luckilly with <a href="http://wiki.qemu.org/Main_Page">qemu</a> and <a href="http://buildroot.uclibc.org/">buildroot</a> this is quite easy to do!</p>
+
+<h1>Building the VM</h1>
+
+<p>The first step to hosting a kernel exploit challenge is to build your vulnerable VM. I used buildroot to build my kernel with a minimal busybox userland, and a tiny 4.5mb ext2 disk. You can start by downloading the buildroot tools.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+</pre></td><td class='code'><pre><code class='sh'><span class='line'>git clone git://git.buildroot.net/buildroot
+</span><span class='line'><span class="nb">cd </span>buildroot
+</span><span class='line'>make xconfig
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>and you&rsquo;ll be dropped to the buildroot configurator.  If you&rsquo;ve ever built a kernel before, this type of configuration screen may seem familiar (except gui instead of curses). Important options are <code>Target</code> to select the architecture you wish to build, <code>Toolchain</code> To specify your kernel header version, <code>Kernel</code> to build a kernel (if you want a custom configuration, you can check out the kernel source and make your own custom config for that, or you could just use the defconfig from buildroot), and <code>Filesystem Images</code> to specify what to use as a root filesystem. I picked <code>ext2</code>.</p>
+
+<p><img src="http://i.imgur.com/ef4F9bh.png" alt="Imgur" /></p>
+
+<p>Hit save, and then</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='sh'><span class='line'>make
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>This may take a while as you download the toolchain, kernel source, and build everything. Check <code>output/images</code> for your kernel <code>bzImage</code> and <code>rootfs.ext2</code> filesystem. At this point you now have a minimal kernel with busybox that you can boot with qemu.This is great, but we need some more things, like the vulnerable module, and some way to launch it. By default, the username <code>root</code> has not password and you can login with that. Please remember to change the password!</p>
+
+<h1>Building the module.</h1>
+
+<p>If you&rsquo;re like me and don&rsquo;t build kernel modules all the time, you probably just steal the kernel module makefile from the first hit on Google for <code>Kernel module makefile</code>. This won&rsquo;t work to build against your custom kernel.</p>
+
+<p>I&rsquo;m going to assume you have your module source that works here, and just provide the makefile. If you need help writing the module, there are better guides than I can give here.
+With this makefile, replace the linux version (3.2.64) that I used, with whatever version you use, krackme.ko with whatever your kernel module is called, and the /path/to/buildroot/ with your actual path to buildroot.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+</pre></td><td class='code'><pre><code class='sh'><span class='line'>obj-m +<span class="o">=</span> krackme.o
+</span><span class='line'>all:
+</span><span class='line'>    make -C /path/to/buildroot/output/build/linux-3.2.64 <span class="nv">M</span><span class="o">=</span><span class="k">$(</span>PWD<span class="k">)</span> modules
+</span><span class='line'>clean:
+</span><span class='line'>    make -C /path/to/buildroot/output/build/linux-3.2.64 <span class="nv">M</span><span class="o">=</span><span class="k">$(</span>PWD<span class="k">)</span> clean
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>So now you should have a .ko ready to be inserted to your new kernel.</p>
+
+<h1>Setting up the vm.</h1>
+
+<p>This magic qemu incantation will give you access to your vm with some networking.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='sh'><span class='line'>/usr/bin/qemu-system-x86_64 -kernel bzImage -hda rootfs.ext2 -boot c -m 64M -append <span class="s2">&quot;root=/dev/sda rw ip=10.0.2.15:10.0.2.2:10.0.2.2 console=ttyAMA0 console=ttyS0&quot;</span> -serial stdio  -net nic,vlan<span class="o">=</span><span class="m">0</span> -net user,vlan<span class="o">=</span><span class="m">0</span> -monitor /dev/null -nographic
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The first thing to do is to log in as <code>root</code> and do some setup. Change the password to something random, and get the vm to the state you want.</p>
+
+<p>Busybox&rsquo;s init scripts run <code>/etc/init.d/rcS</code>, so you can add additional instructions there. Mine looks like</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+<span class='line-number'>10</span>
+<span class='line-number'>11</span>
+<span class='line-number'>12</span>
+<span class='line-number'>13</span>
+<span class='line-number'>14</span>
+<span class='line-number'>15</span>
+<span class='line-number'>16</span>
+<span class='line-number'>17</span>
+<span class='line-number'>18</span>
+<span class='line-number'>19</span>
+<span class='line-number'>20</span>
+<span class='line-number'>21</span>
+<span class='line-number'>22</span>
+<span class='line-number'>23</span>
+<span class='line-number'>24</span>
+<span class='line-number'>25</span>
+<span class='line-number'>26</span>
+<span class='line-number'>27</span>
+<span class='line-number'>28</span>
+</pre></td><td class='code'><pre><code class='sh'><span class='line'><span class="c">#!/bin/sh</span>
+</span><span class='line'>
+</span><span class='line'>
+</span><span class='line'><span class="c"># Start all init scripts in /etc/init.d</span>
+</span><span class='line'><span class="c"># executing them in numerical order.</span>
+</span><span class='line'><span class="c">#</span>
+</span><span class='line'><span class="k">for</span> i in /etc/init.d/S??* <span class="p">;</span><span class="k">do</span>
+</span><span class='line'>
+</span><span class='line'>     <span class="c"># Ignore dangling symlinks (if any).</span>
+</span><span class='line'>     <span class="o">[</span> ! -f <span class="s2">&quot;$i&quot;</span> <span class="o">]</span> <span class="o">&amp;&amp;</span> <span class="k">continue</span>
+</span><span class='line'>
+</span><span class='line'>     <span class="k">case</span> <span class="s2">&quot;$i&quot;</span> in
+</span><span class='line'>        *.sh<span class="o">)</span>
+</span><span class='line'>            <span class="c"># Source shell script for speed.</span>
+</span><span class='line'>            <span class="o">(</span>
+</span><span class='line'>                <span class="nb">trap</span> - INT QUIT TSTP
+</span><span class='line'>                <span class="nb">set </span>start
+</span><span class='line'>                . <span class="nv">$i</span>
+</span><span class='line'>            <span class="o">)</span>
+</span><span class='line'>            <span class="p">;;</span>
+</span><span class='line'>        *<span class="o">)</span>
+</span><span class='line'>            <span class="c"># No sh extension, so fork subprocess.</span>
+</span><span class='line'>            <span class="nv">$i</span> start
+</span><span class='line'>            <span class="p">;;</span>
+</span><span class='line'>    <span class="k">esac</span>
+</span><span class='line'><span class="k">done</span>
+</span><span class='line'>
+</span><span class='line'>/root/setup.sh
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>With <code>/root/setup.sh</code> looking like</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+</pre></td><td class='code'><pre><code class='sh'><span class='line'><span class="c">#!/bin/sh</span>
+</span><span class='line'>.
+</span><span class='line'>insmod /root/krackme.ko
+</span><span class='line'>mknod /dev/krackme c <span class="m">250</span> 0
+</span><span class='line'>chmod <span class="m">666</span> /dev/krackme
+</span><span class='line'>sysctl -w vm.mmap_min_addr<span class="o">=</span><span class="s2">&quot;0&quot;</span>
+</span><span class='line'><span class="nb">echo</span> <span class="s2">&quot;nameserver 8.8.8.8&quot;</span> &gt; /etc/resolv.conf
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>The nameserver setup is important for networking, and make sure to actually insmod your kernel module. You can transfer the .ko by any means, wget, mount and copy, etc.</p>
+
+<p>Next add a new user, with a password you will provide to the attackers and exit.
+Now you should have a frozen good state vm. This launcher script can be used to give every launch a new copy of the vm from this snapshot. Thanks to <a href="http://acez.re">acez</a> for telling me about redirecting monitor to <code>/dev/null</code> to prevent players from dorpping to the qemu monitor.</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+</pre></td><td class='code'><pre><code class='sh'><span class='line'><span class="c">#!/bin/bash</span>
+</span><span class='line'><span class="nv">MYFS</span><span class="o">=</span><span class="k">$(</span>mktemp<span class="k">)</span>
+</span><span class='line'>cp rootfs.ext2 <span class="nv">$MYFS</span>
+</span><span class='line'>/usr/bin/qemu-system-x86_64 -kernel bzImage -hda <span class="nv">$MYFS</span> -boot c -m 64M -append <span class="s2">&quot;root=/dev/sda rw ip=10.0.2.15:10.0.2.2:10.0.2.2 console=ttyAMA0 console=ttyS0&quot;</span> -serial stdio  -net nic,vlan<span class="o">=</span><span class="m">0</span> -net user,vlan<span class="o">=</span><span class="m">0</span> -monitor /dev/null -nographic
+</span><span class='line'>rm <span class="nv">$MYFS</span>
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>So every launch from this script will now create a new copy of the hard disk, and boot from there. Users will not be able to interfere, and with the small amount of memory, the host vm should be able to host quite a few guests at once.</p>
+
+<h1>Launch on connect.</h1>
+
+<p>The last step is make the qemu vm launch when users connect to it. The simplest way is to add a new user to the host vm, and make the launch script the login shell. Give the players login access to the host vm with the provided username/password and the credentials to the user account on the guest vm.</p>
+
+<h1>Other notes.</h1>
+
+<p>See the PPP suggestions for running a ctf <a href="https://github.com/pwning/docs/blob/master/suggestions-for-running-a-ctf.markdown">here</a> for other tips for a local kernel challenge. While what I&rsquo;ve posted here will help you set up the infrastructure, it won&rsquo;t guarantee a good challenge, so following the advice there is an important step! Most importantly, be creative in your challenge, generic challenges are also boring to solve!</p>
+
+<p>Let me know if you have any questions!</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+</pre></td><td class='code'><pre><code class='sh'><span class='line'>crowell@shellphish.net
+</span></code></pre></td></tr></table></div></figure>
+
+</div>
+
+
+  <footer>
+    <p class="meta">
+      
+  
+
+<span class="byline author vcard">Posted by <span class="fn">Jeffrey Crowell</span></span>
+
+      
+
+
+
+
+
+
+
+
+  
+
+
+<time datetime="2014-11-24T00:38:42-05:00" pubdate data-updated="true"></time>
+      
+
+<span class="categories">
+  
+    <a class='category' href='/blog/categories/ctf/'>ctf</a>, <a class='category' href='/blog/categories/kernel/'>kernel</a>, <a class='category' href='/blog/categories/pwning/'>pwning</a>
+  
+</span>
+
+
+    </p>
+    
+      <div class="sharing">
+  
+  <a href="http://twitter.com/share" class="twitter-share-button" data-url="http://crowell.github.io/blog/2014/11/24/hosting-a-local-kernel-ctf-challenge/" data-via="" data-counturl="http://crowell.github.io/blog/2014/11/24/hosting-a-local-kernel-ctf-challenge/" >Tweet</a>
+  
+  
+  
+</div>
+
+    
+    <p class="meta">
+      
+        <a class="basic-alignment left" href="/blog/2014/11/23/at-gunpoint-hacklu-2014-with-radare2/" title="Previous Post: at gunpoint hacklu 2014 with radare2">&laquo; at gunpoint hacklu 2014 with radare2</a>
+      
+      
+    </p>
+  </footer>
+</article>
+
+</div>
+
+<aside class="sidebar">
+  
+    <section>
+  <h1>Recent Posts</h1>
+  <ul id="recent_posts">
+    
+      <li class="post">
+        <a href="/blog/2014/11/24/hosting-a-local-kernel-ctf-challenge/">hosting a local kernel ctf challenge</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/11/23/at-gunpoint-hacklu-2014-with-radare2/">at gunpoint hacklu 2014 with radare2</a>
+      </li>
+    
+      <li class="post">
+        <a href="/blog/2014/11/23/pwning-with-radare2/">pwning with radare2</a>
+      </li>
+    
+  </ul>
+</section>
+
+
+
+
+
+  
+</aside>
+
+
+    </div>
+  </div>
+  <footer role="contentinfo"><p>
+  Copyright &copy; 2014 - Jeffrey Crowell -
+  <span class="credit">Powered by <a href="http://octopress.org">Octopress</a></span>
+</p>
+
+</footer>
+  
+
+
+
+
+
+
+
+  <script type="text/javascript">
+    (function(){
+      var twitterWidgets = document.createElement('script');
+      twitterWidgets.type = 'text/javascript';
+      twitterWidgets.async = true;
+      twitterWidgets.src = 'http://platform.twitter.com/widgets.js';
+      document.getElementsByTagName('head')[0].appendChild(twitterWidgets);
+    })();
+  </script>
+
+
+
+
+
+</body>
+</html>
