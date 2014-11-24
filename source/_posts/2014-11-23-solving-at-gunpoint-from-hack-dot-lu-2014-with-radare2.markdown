@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "Solving "At gunpoint" from hack.lu 2014 with radare2"
+title: "Solving At gunpoint from hack.lu 2014 with radare2"
 date: 2014-11-23 22:43:13 -0500
 comments: true
 categories: ctf reversing radare2
