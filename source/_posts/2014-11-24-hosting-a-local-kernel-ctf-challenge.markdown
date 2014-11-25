@@ -135,7 +135,7 @@ cp /path/to/rootfs.ext2 .
 cp /path/to/launcher/script.sh . # script.sh is the launcher script mentioned in the previous section
 # add /home/myuser/script.sh to /etc/shells
 chsh -s /home/myuser/script.sh myuser
-``
+```
 
 and then login with the `myuser` user will spawn the qemu vm!
 
