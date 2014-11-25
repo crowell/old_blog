@@ -123,6 +123,22 @@ So every launch from this script will now create a new copy of the hard disk, an
 #Launch on connect.
 The last step is make the qemu vm launch when users connect to it. The simplest way is to add a new user to the host vm, and make the launch script the login shell. Give the players login access to the host vm with the provided username/password and the credentials to the user account on the guest vm.
 
+So essentially what needs to be done is
+
+```sh
+adduser myuser
+# follow the prompts
+su myuser
+cd /home/myuser
+cp /path/to/bzImage .
+cp /path/to/rootfs.ext2 .
+cp /path/to/launcher/script.sh . # script.sh is the launcher script mentioned in the previous section
+# add /home/myuser/script.sh to /etc/shells
+chsh -s /home/myuser/script.sh myuser
+``
+
+and then login with the `myuser` user will spawn the qemu vm!
+
 #Other notes.
 See the PPP suggestions for running a ctf [here](https://github.com/pwning/docs/blob/master/suggestions-for-running-a-ctf.markdown) for other tips for a local kernel challenge. While what I've posted here will help you set up the infrastructure, it won't guarantee a good challenge, so following the advice there is an important step! Most importantly, be creative in your challenge, generic challenges are also boring to solve!
 
