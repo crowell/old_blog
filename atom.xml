@@ -4,7 +4,7 @@
   <title><![CDATA[crowell's blog]]></title>
   <link href="http://crowell.github.io/atom.xml" rel="self"/>
   <link href="http://crowell.github.io/"/>
-  <updated>2014-11-24T00:39:26-05:00</updated>
+  <updated>2014-11-24T19:29:03-05:00</updated>
   <id>http://crowell.github.io/</id>
   <author>
     <name><![CDATA[Jeffrey Crowell]]></name>
@@ -196,6 +196,31 @@ Now you should have a frozen good state vm. This launcher script can be used to 
 <h1>Launch on connect.</h1>
 
 <p>The last step is make the qemu vm launch when users connect to it. The simplest way is to add a new user to the host vm, and make the launch script the login shell. Give the players login access to the host vm with the provided username/password and the credentials to the user account on the guest vm.</p>
+
+<p>So essentially what needs to be done is</p>
+
+<figure class='code'><figcaption><span></span></figcaption><div class="highlight"><table><tr><td class="gutter"><pre class="line-numbers"><span class='line-number'>1</span>
+<span class='line-number'>2</span>
+<span class='line-number'>3</span>
+<span class='line-number'>4</span>
+<span class='line-number'>5</span>
+<span class='line-number'>6</span>
+<span class='line-number'>7</span>
+<span class='line-number'>8</span>
+<span class='line-number'>9</span>
+</pre></td><td class='code'><pre><code class='sh'><span class='line'>adduser myuser
+</span><span class='line'><span class="c"># follow the prompts</span>
+</span><span class='line'>su myuser
+</span><span class='line'><span class="nb">cd</span> /home/myuser
+</span><span class='line'>cp /path/to/bzImage .
+</span><span class='line'>cp /path/to/rootfs.ext2 .
+</span><span class='line'>cp /path/to/launcher/script.sh . <span class="c"># script.sh is the launcher script mentioned in the previous section</span>
+</span><span class='line'><span class="c"># add /home/myuser/script.sh to /etc/shells</span>
+</span><span class='line'>chsh -s /home/myuser/script.sh myuser
+</span></code></pre></td></tr></table></div></figure>
+
+
+<p>and then login with the <code>myuser</code> user will spawn the qemu vm!</p>
 
 <h1>Other notes.</h1>
 

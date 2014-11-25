@@ -4,7 +4,7 @@
   <title><![CDATA[Category: ctf | crowell's blog]]></title>
   <link href="http://crowell.github.io/blog/categories/ctf/atom.xml" rel="self"/>
   <link href="http://crowell.github.io/"/>
-  <updated>2014-11-24T19:25:44-05:00</updated>
+  <updated>2014-11-24T19:29:03-05:00</updated>
   <id>http://crowell.github.io/</id>
   <author>
     <name><![CDATA[Jeffrey Crowell]]></name>
@@ -150,18 +150,18 @@ cp /path/to/rootfs.ext2 .
 cp /path/to/launcher/script.sh . # script.sh is the launcher script mentioned in the previous section
 # add /home/myuser/script.sh to /etc/shells
 chsh -s /home/myuser/script.sh myuser
-``
-
-and then login with the `myuser` user will spawn the qemu vm!
-
-#Other notes.
-See the PPP suggestions for running a ctf [here](https://github.com/pwning/docs/blob/master/suggestions-for-running-a-ctf.markdown) for other tips for a local kernel challenge. While what I've posted here will help you set up the infrastructure, it won't guarantee a good challenge, so following the advice there is an important step! Most importantly, be creative in your challenge, generic challenges are also boring to solve!
-
-Let me know if you have any questions!
 </code></pre>
 
-<p><a href="&#x6d;&#97;&#x69;&#x6c;&#x74;&#111;&#x3a;&#x63;&#114;&#111;&#119;&#x65;&#x6c;&#x6c;&#64;&#115;&#x68;&#101;&#108;&#x6c;&#x70;&#104;&#x69;&#115;&#104;&#46;&#110;&#101;&#x74;">&#99;&#x72;&#111;&#119;&#101;&#108;&#108;&#x40;&#x73;&#x68;&#x65;&#x6c;&#108;&#112;&#x68;&#x69;&#115;&#x68;&#46;&#110;&#x65;&#116;</a>
-&#8220;`</p>
+<p>and then login with the <code>myuser</code> user will spawn the qemu vm!</p>
+
+<h1>Other notes.</h1>
+
+<p>See the PPP suggestions for running a ctf <a href="https://github.com/pwning/docs/blob/master/suggestions-for-running-a-ctf.markdown">here</a> for other tips for a local kernel challenge. While what I&rsquo;ve posted here will help you set up the infrastructure, it won&rsquo;t guarantee a good challenge, so following the advice there is an important step! Most importantly, be creative in your challenge, generic challenges are also boring to solve!</p>
+
+<p>Let me know if you have any questions!</p>
+
+<pre><code>crowell@shellphish.net
+</code></pre>
 ]]></content>
   </entry>
   
