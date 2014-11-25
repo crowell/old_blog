@@ -4,7 +4,7 @@
   <title><![CDATA[Category: pwning | crowell's blog]]></title>
   <link href="http://crowell.github.io/blog/categories/pwning/atom.xml" rel="self"/>
   <link href="http://crowell.github.io/"/>
-  <updated>2014-11-24T00:39:26-05:00</updated>
+  <updated>2014-11-24T19:25:44-05:00</updated>
   <id>http://crowell.github.io/</id>
   <author>
     <name><![CDATA[Jeffrey Crowell]]></name>
@@ -139,14 +139,29 @@ rm $MYFS
 
 <p>The last step is make the qemu vm launch when users connect to it. The simplest way is to add a new user to the host vm, and make the launch script the login shell. Give the players login access to the host vm with the provided username/password and the credentials to the user account on the guest vm.</p>
 
-<h1>Other notes.</h1>
+<p>So essentially what needs to be done is</p>
 
-<p>See the PPP suggestions for running a ctf <a href="https://github.com/pwning/docs/blob/master/suggestions-for-running-a-ctf.markdown">here</a> for other tips for a local kernel challenge. While what I&rsquo;ve posted here will help you set up the infrastructure, it won&rsquo;t guarantee a good challenge, so following the advice there is an important step! Most importantly, be creative in your challenge, generic challenges are also boring to solve!</p>
+<pre><code class="sh">adduser myuser
+# follow the prompts
+su myuser
+cd /home/myuser
+cp /path/to/bzImage .
+cp /path/to/rootfs.ext2 .
+cp /path/to/launcher/script.sh . # script.sh is the launcher script mentioned in the previous section
+# add /home/myuser/script.sh to /etc/shells
+chsh -s /home/myuser/script.sh myuser
+``
 
-<p>Let me know if you have any questions!</p>
+and then login with the `myuser` user will spawn the qemu vm!
 
-<pre><code>crowell@shellphish.net
+#Other notes.
+See the PPP suggestions for running a ctf [here](https://github.com/pwning/docs/blob/master/suggestions-for-running-a-ctf.markdown) for other tips for a local kernel challenge. While what I've posted here will help you set up the infrastructure, it won't guarantee a good challenge, so following the advice there is an important step! Most importantly, be creative in your challenge, generic challenges are also boring to solve!
+
+Let me know if you have any questions!
 </code></pre>
+
+<p><a href="&#x6d;&#x61;&#x69;&#x6c;&#x74;&#111;&#x3a;&#x63;&#x72;&#x6f;&#x77;&#101;&#108;&#x6c;&#64;&#115;&#104;&#x65;&#x6c;&#x6c;&#112;&#x68;&#x69;&#x73;&#104;&#x2e;&#110;&#x65;&#116;">&#99;&#x72;&#x6f;&#x77;&#101;&#x6c;&#x6c;&#64;&#115;&#104;&#101;&#108;&#x6c;&#112;&#104;&#x69;&#115;&#104;&#x2e;&#x6e;&#x65;&#x74;</a>
+&#8220;`</p>
 ]]></content>
   </entry>
   
